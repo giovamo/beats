@@ -1,6 +1,15 @@
 package harvester
 
 import (
+	//Added lib @tesina
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"log"	
+	
 	"errors"
 	"io"
 	"os"
@@ -76,10 +85,49 @@ func (h *Harvester) Harvest() {
 		event := h.createEvent()
 
 		if h.shouldExportLine(text) {
+			// adding code @tesina
+			// get Key from file
+			file, err := os.Open("/etc/pki/keyfile.key") 
+			if err != nil {
+				 log.Fatal(err)
+			}
+			//making key string to byte array
+			key := make([]byte, 32)
+			count, err2 := file.Read(key)
+			if count == 0 {
+				log.Fatal(err2)
+			}
+			if err2 != nil {
+				 log.Fatal(err2)
+			}
+			file.Close()
+			block, err6 := aes.NewCipher(key)
+			if err6 != nil {
+				panic(err6)
+			}
+			
+			plaintext := []byte(text)
+			ciphertext := make([]byte, aes.BlockSize+len(plaintext))
+			iv := ciphertext[:aes.BlockSize]
+			if _, err := rand.Read(iv); err != nil {
+				panic(err)
+			}
+			
+			stream := cipher.NewCTR(block, iv)
+			stream.XORKeyStream(ciphertext[aes.BlockSize:], plaintext)
+			
+			ct := []byte(base64.StdEncoding.EncodeToString(ciphertext))
+			mac := hmac.New(sha256.New, key)
+ 			mac.Write(ct)
+         		ciphertext = mac.Sum(ct)	
+			
+      			base := base64.StdEncoding.EncodeToString(ciphertext)
+
+			//from here: source code
 
 			event.ReadTime = ts
 			event.Bytes = bytesRead
-			event.Text = &text
+			event.Text = &base //shipping base64 encoded message to logstash
 			event.JSONFields = jsonFields
 		}
 
